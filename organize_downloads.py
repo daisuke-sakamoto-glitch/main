@@ -16,10 +16,16 @@
 """
 
 import argparse
+import io
 import re
 import shutil
+import sys
 from collections import defaultdict
 from pathlib import Path
+
+# Windows環境での文字化け・エンコードエラーを防止
+sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
+sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding="utf-8", errors="replace")
 
 # ---------------------------------------------------------------------------
 # 内容別カテゴリ: ファイル名に含まれるキーワード → カテゴリ名
