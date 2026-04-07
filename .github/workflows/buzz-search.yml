@@ -1,0 +1,58 @@
+name: Weekly Buzz Search
+
+on:
+  # 毎週月曜日の朝9時（日本時間）に自動実行
+  schedule:
+    - cron: '0 0 * * 1'  # UTC 0:00 = JST 9:00
+  # 手動でも実行できるようにする
+  workflow_dispatch:
+    inputs:
+      category:
+        description: '検索カテゴリ（空欄で全カテゴリ）'
+        required: false
+        default: ''
+      min_likes:
+        description: '最低いいね数'
+        required: false
+        default: '50'
+
+jobs:
+  buzz-search:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: claude/skill-development-plan-9wjhf
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Run buzz search
+        env:
+          X_BEARER_TOKEN: ${{ secrets.X_BEARER_TOKEN }}
+        run: |
+          CATEGORY="${{ github.event.inputs.category }}"
+          MIN_LIKES="${{ github.event.inputs.min_likes || '50' }}"
+
+          if [ -n "$CATEGORY" ]; then
+            python x_buzz_search.py --category "$CATEGORY" --min-likes "$MIN_LIKES" --top 10
+          else
+            python x_buzz_search.py --min-likes "$MIN_LIKES" --top 10
+          fi
+
+      - name: Commit and push results
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add buzz_results_*.csv
+          if git diff --staged --quiet; then
+            echo "No new results to commit"
+          else
+            DATE=$(date +%Y%m%d)
+            git commit -m "Auto: Weekly buzz search results ($DATE)"
+            git push
+          fi
