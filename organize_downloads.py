@@ -294,13 +294,15 @@ def resolve_conflict(dest: Path) -> Path:
         counter += 1
 
 
-def organize(target_dir: Path, dry_run: bool = False, min_group: int = 2) -> None:
+def organize(target_dir: Path, dry_run: bool = False, min_group: int = 2,
+             exclude_files: set[Path] | None = None) -> None:
     """target_dir 内のファイルをキーワードベースで整理する。"""
     if not target_dir.is_dir():
         print(f"エラー: '{target_dir}' はディレクトリではありません。")
         return
 
-    files = [f for f in target_dir.iterdir() if f.is_file()]
+    exclude = exclude_files or set()
+    files = [f for f in target_dir.iterdir() if f.is_file() and f.resolve() not in exclude]
 
     if not files:
         print("整理するファイルがありません。")
@@ -409,6 +411,13 @@ def main() -> None:
         sys.stdout = open(output_path, "w", encoding="utf-8")
 
     target = Path(args.directory).expanduser().resolve()
+
+    # スクリプト自身・出力ファイル・結果ファイルを整理対象から除外
+    exclude_files: set[Path] = set()
+    exclude_files.add(Path(__file__).resolve())
+    if args.output:
+        exclude_files.add(Path(args.output).resolve())
+
     print(f"対象フォルダ: {target}")
     print(f"案件グループ最小ファイル数: {args.min_group}")
 
@@ -417,7 +426,8 @@ def main() -> None:
     else:
         print()
 
-    organize(target, dry_run=args.dry_run, min_group=args.min_group)
+    organize(target, dry_run=args.dry_run, min_group=args.min_group,
+             exclude_files=exclude_files)
 
     if args.output:
         sys.stdout.close()
