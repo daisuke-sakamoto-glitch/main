@@ -2,11 +2,10 @@
 """ダウンロードフォルダをキーワードベースで案件別に整理するスクリプト。
 
 整理ロジック:
-  1. ファイル名から共通キーワードを抽出し、同じキーワードを持つファイルを
-     案件フォルダとしてまとめる（例: "ABC商事" が含まれるファイル → ABC商事/）
-  2. 案件に該当しないファイルはファイル名のキーワードで内容別カテゴリに振り分け
-     （見積・請求書、採用関連、契約関連 など）
-  3. どれにも該当しないファイルは「その他」フォルダへ
+  1. ファイル名から日付や一般語を除外し、案件固有のキーワードを抽出
+  2. 同じキーワードを含むファイルを案件フォルダとしてまとめる
+  3. 案件に該当しないファイルは内容別カテゴリに振り分け
+  4. どれにも該当しないファイルは「その他」フォルダへ
 
 使い方:
     python organize_downloads.py                  # ~/Downloads を整理
@@ -24,7 +23,6 @@ from pathlib import Path
 
 # ---------------------------------------------------------------------------
 # 内容別カテゴリ: ファイル名に含まれるキーワード → カテゴリ名
-# 案件グループに該当しなかったファイルをここで分類する
 # ---------------------------------------------------------------------------
 CONTENT_CATEGORIES = [
     {
@@ -88,56 +86,129 @@ CONTENT_CATEGORIES = [
     },
 ]
 
-# 案件キーワード抽出時に除外する一般的な語（ノイズ除去）
+# 案件名として意味のない一般的な語（除外対象）
 STOP_WORDS = {
-    # 日本語の一般語
+    # 日本語の一般語・助詞
     "の", "に", "は", "を", "と", "が", "で", "から", "まで", "より",
     "について", "における", "に関する", "向け", "用",
+    # バージョン・状態
     "新", "旧", "案", "版", "最終", "最新", "修正", "更新", "確認",
     "final", "draft", "copy", "new", "old", "rev", "ver",
-    # 日付パターンに近い語
+    # 日付
     "月", "日", "年",
-    # ファイル整理で意味のない語
+    # ファイル管理
     "ダウンロード", "download", "downloads",
     "コピー", "backup", "tmp", "temp",
+    # 資料の種類（案件名ではなく一般的な文書種類）
+    "資料", "追加資料", "定例会資料", "定例会", "定例",
+    "提案書", "提案", "企画書", "企画",
+    "報告書", "報告", "運用報告",
+    "見積", "見積書", "見積もり", "見積り",
+    "請求", "請求書", "納品書", "領収書",
+    "契約書", "覚書", "議事録",
+    "概要", "詳細", "一覧", "まとめ", "サマリー",
+    "ご提案", "ご提案書", "ご相談", "ご確認",
+    "御中", "御提案書", "御提案",
+    "施策", "プロモーション施策",
+    "追加", "補足", "参考", "別紙", "添付",
+    "完成", "完了", "対応", "依頼", "共有",
+    "初稿", "2稿", "3稿", "最終稿",
+    "修正版", "確認用", "送付用", "提出用", "社内用",
+    "プレゼン", "ミーティング",
+    "運用", "X運用", "運用御提案書", "X運用御提案書",
+    "X運用ご提案書", "運用ご提案書",
+    "プロモーション",
+    "image", "img", "photo", "screen", "screenshot",
+    "test", "sample", "demo",
 }
 
-# 日付っぽいパターン（除外用）
-DATE_PATTERN = re.compile(
-    r"^(20[0-9]{2}|[0-9]{8}|[0-9]{6}|[0-9]{4}[01][0-9][0-3][0-9])$"
-)
+# 日付パターン（ファイル名の先頭・末尾によくある）
+DATE_PATTERNS = [
+    re.compile(r"^[0-9]{8}$"),          # 20240301
+    re.compile(r"^[0-9]{6}$"),          # 240301
+    re.compile(r"^[0-9]{4}$"),          # 0301
+    re.compile(r"^20[0-9]{2}$"),        # 2024
+    re.compile(r"^[0-9]{2,4}年$"),      # 2024年, 24年
+    re.compile(r"^[0-9]{1,2}月$"),      # 3月
+    re.compile(r"^[0-9]{4}[01][0-9]$"), # 202403
+    re.compile(r"^\d+稿$"),             # 2稿, 3稿
+]
+
+# 数字のみ or 1文字のトークンを除外するパターン
+NOISE_PATTERN = re.compile(r"^[0-9]+$|^.$")
+
+
+def _is_noise_token(token: str) -> bool:
+    """案件名として意味のないトークンかどうか判定する。"""
+    if not token:
+        return True
+    if token.lower() in STOP_WORDS:
+        return True
+    if NOISE_PATTERN.match(token):
+        return True
+    for pat in DATE_PATTERNS:
+        if pat.match(token):
+            return True
+    return False
 
 
 def tokenize_filename(file_path: Path) -> list[str]:
-    """ファイル名（拡張子除く）を区切り文字でトークンに分割する。"""
+    """ファイル名（拡張子除く）を区切り文字でトークンに分割し、ノイズを除去する。"""
     stem = file_path.stem
-    # 記号・スペースで分割し、各セグメントをそのまま保持
-    tokens = re.split(r"[_\-.\s　()（）\[\]【】{}「」『』]+", stem)
-    # 数字のみのトークン・ストップワード・日付パターンを除外
-    return [
-        t for t in tokens
-        if t and len(t) >= 2 and t.lower() not in STOP_WORDS and not DATE_PATTERN.match(t) and not t.isdigit()
-    ]
+    # 記号・スペースで分割
+    tokens = re.split(r"[_\-.\s　()（）\[\]【】{}「」『』｜|／/,，]+", stem)
+    # 先頭の日付っぽい数字を除去（例: "0204追加資料" → "0204" と "追加資料"）
+    cleaned = []
+    for t in tokens:
+        # トークン先頭の日付っぽい数字を分離（例: "0310定例会資料" → "0310", "定例会資料"）
+        # ただし "100万" のように数字+単位は分離しない
+        m = re.match(r"^(\d{2,8})([\u3000-\u9FFFa-zA-Z].+)$", t)
+        if m:
+            num_part, text_part = m.group(1), m.group(2)
+            # 数字+「万」「億」「千」などの単位は分離せず1トークンとして保持
+            if re.match(r"^\d+[万億千百]", t):
+                if not _is_noise_token(t):
+                    cleaned.append(t)
+                continue
+            if not _is_noise_token(num_part):
+                cleaned.append(num_part)
+            if not _is_noise_token(text_part):
+                cleaned.append(text_part)
+        else:
+            if not _is_noise_token(t):
+                cleaned.append(t)
+    return cleaned
+
+
+def _clean_filename_for_matching(file_path: Path) -> str:
+    """ファイル名から日付・記号を除去し、マッチング用の文字列を返す。"""
+    stem = file_path.stem
+    # 先頭の日付を除去 (0204, 20240301, 251127 など)
+    stem = re.sub(r"^\d{2,8}", "", stem)
+    # 末尾の日付を除去
+    stem = re.sub(r"\d{4,8}$", "", stem)
+    # 記号を除去
+    stem = re.sub(r"[_\-.\s　()（）\[\]【】{}「」『』｜|／/,，\d]+", "", stem)
+    return stem
 
 
 def extract_project_keywords(files: list[Path], min_group: int) -> dict[str, list[Path]]:
     """ファイル名の共通キーワードから案件グループを抽出する。
 
-    同じキーワード（トークン）を含むファイルが min_group 個以上あれば
-    案件グループとみなす。複数のキーワードに該当する場合は、
-    最も多くのトークンが一致するグループに割り当てる。
+    各トークンを案件キーワード候補とし、そのキーワードがファイル名に
+    「部分一致」するファイルをグループにまとめる。
+    キーワードが別のキーワードの部分文字列である場合は短い方を優先し、
+    より多くのファイルを1つのグループにまとめる。
     """
-    # 各トークンがどのファイルに出現するか集計
+    # 各トークンがどのファイルに出現するか集計（トークン完全一致）
     token_to_files: dict[str, set[Path]] = defaultdict(set)
-    file_tokens: dict[Path, set[str]] = {}
 
     for f in files:
         tokens = set(tokenize_filename(f))
-        file_tokens[f] = tokens
         for token in tokens:
             token_to_files[token].add(f)
 
-    # min_group 以上のファイルに共通するトークンを案件キーワード候補とする
+    # min_group 以上のファイルに共通するトークンを候補とする
     candidate_keywords = {
         token: file_set
         for token, file_set in token_to_files.items()
@@ -147,41 +218,54 @@ def extract_project_keywords(files: list[Path], min_group: int) -> dict[str, lis
     if not candidate_keywords:
         return {}
 
-    # 共通ファイル集合が同じキーワード同士をマージして案件名にする
-    # (例: "ABC" と "商事" が完全に同じファイル群なら "ABC商事" にまとめる)
-    fileset_to_keywords: dict[frozenset, list[str]] = defaultdict(list)
-    for token, file_set in candidate_keywords.items():
-        key = frozenset(file_set)
-        fileset_to_keywords[key].append(token)
+    # キーワードAがキーワードBの部分文字列なら、Bに該当するファイルもAに含める
+    # （例: "バディエディ" ⊂ "バディエディプロモーション施策"）
+    merged_keywords: dict[str, set[Path]] = {}
+    for keyword, file_set in candidate_keywords.items():
+        # このキーワードがファイル名に部分一致するファイルをすべて集める
+        matching_files: set[Path] = set()
+        for f in files:
+            if keyword in f.stem:
+                matching_files.add(f)
+        if len(matching_files) >= min_group:
+            merged_keywords[keyword] = matching_files
 
-    # 各ファイルをスコアが最も高いグループに割り当て
+    if not merged_keywords:
+        return {}
+
+    # 短いキーワードが長いキーワードの部分文字列なら、短い方に統合
+    # まず短い順にソートし、長いキーワードを吸収していく
+    keywords_by_length = sorted(merged_keywords.keys(), key=len)
+    absorbed: set[str] = set()
+
+    for i, short_kw in enumerate(keywords_by_length):
+        if short_kw in absorbed:
+            continue
+        for long_kw in keywords_by_length[i + 1:]:
+            if long_kw in absorbed:
+                continue
+            if short_kw in long_kw:
+                # 長いキーワードのファイルを短い方に統合
+                merged_keywords[short_kw] |= merged_keywords[long_kw]
+                absorbed.add(long_kw)
+
+    # 吸収されたキーワードを除去
+    for kw in absorbed:
+        del merged_keywords[kw]
+
+    # ファイル数の多い順にソートして割り当て
+    sorted_keywords = sorted(merged_keywords.items(), key=lambda x: len(x[1]), reverse=True)
+
     groups: dict[str, list[Path]] = {}
     assigned: set[Path] = set()
 
-    # グループをファイル数の多い順にソート
-    sorted_groups = sorted(fileset_to_keywords.items(), key=lambda x: len(x[0]), reverse=True)
-
-    for file_set_frozen, keywords in sorted_groups:
-        # グループ名: キーワードをファイル名に登場する順で結合
-        group_name = _build_group_name(keywords, files)
-        group_files = [f for f in file_set_frozen if f not in assigned]
-
-        if len(group_files) >= min_group:
-            groups[group_name] = sorted(group_files, key=lambda f: f.name)
-            assigned.update(group_files)
+    for keyword, file_set in sorted_keywords:
+        unassigned = [f for f in file_set if f not in assigned]
+        if len(unassigned) >= min_group:
+            groups[keyword] = sorted(unassigned, key=lambda f: f.name)
+            assigned.update(unassigned)
 
     return groups
-
-
-def _build_group_name(keywords: list[str], files: list[Path]) -> str:
-    """キーワード群から読みやすいグループ名を作る。"""
-    if len(keywords) == 1:
-        return keywords[0]
-
-    # 最初のファイル名における出現順でソート
-    reference = files[0].stem
-    keywords_sorted = sorted(keywords, key=lambda k: reference.find(k) if reference.find(k) >= 0 else 999)
-    return "".join(keywords_sorted)
 
 
 def classify_by_content(file_path: Path) -> str | None:
@@ -231,7 +315,7 @@ def organize(target_dir: Path, dry_run: bool = False, min_group: int = 2) -> Non
     if project_groups:
         print("■ 案件別フォルダ:")
         for group_name, group_files in sorted(project_groups.items()):
-            print(f"\n  [{group_name}]")
+            print(f"\n  [{group_name}] ({len(group_files)}件)")
             for f in group_files:
                 dest_dir = target_dir / group_name
                 dest = resolve_conflict(dest_dir / f.name)
@@ -259,7 +343,7 @@ def organize(target_dir: Path, dry_run: bool = False, min_group: int = 2) -> Non
     if content_groups:
         print("\n■ 内容別フォルダ:")
         for category, cat_files in sorted(content_groups.items()):
-            print(f"\n  [{category}]")
+            print(f"\n  [{category}] ({len(cat_files)}件)")
             for f in sorted(cat_files, key=lambda x: x.name):
                 dest_dir = target_dir / category
                 dest = resolve_conflict(dest_dir / f.name)
@@ -273,7 +357,7 @@ def organize(target_dir: Path, dry_run: bool = False, min_group: int = 2) -> Non
 
     # --- ステップ3: どこにも該当しないファイル ---
     if uncategorized:
-        print("\n■ その他:")
+        print(f"\n■ その他 ({len(uncategorized)}件):")
         for f in sorted(uncategorized, key=lambda x: x.name):
             dest_dir = target_dir / "その他"
             dest = resolve_conflict(dest_dir / f.name)
