@@ -315,7 +315,18 @@ def main() -> None:
         default=2,
         help="案件グループとみなす最小ファイル数 (デフォルト: 2)",
     )
+    parser.add_argument(
+        "--output",
+        type=str,
+        default=None,
+        help="結果をファイルに保存 (例: --output result.txt)",
+    )
     args = parser.parse_args()
+
+    # --output が指定されたら、printの出力先をファイルに切り替える
+    if args.output:
+        output_path = Path(args.output).resolve()
+        sys.stdout = open(output_path, "w", encoding="utf-8")
 
     target = Path(args.directory).expanduser().resolve()
     print(f"対象フォルダ: {target}")
@@ -327,6 +338,12 @@ def main() -> None:
         print()
 
     organize(target, dry_run=args.dry_run, min_group=args.min_group)
+
+    if args.output:
+        sys.stdout.close()
+        # 画面にも完了メッセージを出す
+        sys.stdout = io.TextIOWrapper(sys.__stdout__.buffer, encoding="utf-8", errors="replace")
+        print(f"結果を {output_path} に保存しました。")
 
 
 if __name__ == "__main__":
