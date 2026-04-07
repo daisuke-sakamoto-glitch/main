@@ -16,16 +16,11 @@
 """
 
 import argparse
-import io
 import re
 import shutil
 import sys
 from collections import defaultdict
 from pathlib import Path
-
-# Windows環境での文字化け・エンコードエラーを防止
-sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
-sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding="utf-8", errors="replace")
 
 # ---------------------------------------------------------------------------
 # 内容別カテゴリ: ファイル名に含まれるキーワード → カテゴリ名
@@ -324,6 +319,7 @@ def main() -> None:
     args = parser.parse_args()
 
     # --output が指定されたら、printの出力先をファイルに切り替える
+    original_stdout = sys.stdout
     if args.output:
         output_path = Path(args.output).resolve()
         sys.stdout = open(output_path, "w", encoding="utf-8")
@@ -341,8 +337,7 @@ def main() -> None:
 
     if args.output:
         sys.stdout.close()
-        # 画面にも完了メッセージを出す
-        sys.stdout = io.TextIOWrapper(sys.__stdout__.buffer, encoding="utf-8", errors="replace")
+        sys.stdout = original_stdout
         print(f"結果を {output_path} に保存しました。")
 
 
