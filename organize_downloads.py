@@ -302,13 +302,19 @@ def organize(target_dir: Path, dry_run: bool = False, min_group: int = 2,
         return
 
     exclude = exclude_files or set()
-    files = [f for f in target_dir.iterdir() if f.is_file() and f.resolve() not in exclude]
+    # スクリプト関連ファイル（result.txt等）も除外
+    exclude_names = {"organize_downloads.py", "result.txt", "result_real.txt"}
+    files = [
+        f for f in target_dir.iterdir()
+        if f.is_file() and f.resolve() not in exclude and f.name not in exclude_names
+    ]
 
     if not files:
         print("整理するファイルがありません。")
         return
 
     moved_count = 0
+    skipped_count = 0
 
     # --- ステップ1: 案件キーワードでグルーピング ---
     project_groups = extract_project_keywords(files, min_group)
@@ -323,11 +329,16 @@ def organize(target_dir: Path, dry_run: bool = False, min_group: int = 2,
                 dest = resolve_conflict(dest_dir / f.name)
                 if dry_run:
                     print(f"    [dry-run] {f.name}")
+                    moved_count += 1
                 else:
-                    dest_dir.mkdir(exist_ok=True)
-                    shutil.move(str(f), str(dest))
-                    print(f"    {f.name}")
-                moved_count += 1
+                    try:
+                        dest_dir.mkdir(exist_ok=True)
+                        shutil.move(str(f), str(dest))
+                        print(f"    {f.name}")
+                        moved_count += 1
+                    except PermissionError:
+                        print(f"    [スキップ: 使用中] {f.name}")
+                        skipped_count += 1
                 assigned_files.add(f)
 
     # --- ステップ2: 残りを内容別カテゴリで分類 ---
@@ -351,11 +362,16 @@ def organize(target_dir: Path, dry_run: bool = False, min_group: int = 2,
                 dest = resolve_conflict(dest_dir / f.name)
                 if dry_run:
                     print(f"    [dry-run] {f.name}")
+                    moved_count += 1
                 else:
-                    dest_dir.mkdir(exist_ok=True)
-                    shutil.move(str(f), str(dest))
-                    print(f"    {f.name}")
-                moved_count += 1
+                    try:
+                        dest_dir.mkdir(exist_ok=True)
+                        shutil.move(str(f), str(dest))
+                        print(f"    {f.name}")
+                        moved_count += 1
+                    except PermissionError:
+                        print(f"    [スキップ: 使用中] {f.name}")
+                        skipped_count += 1
 
     # --- ステップ3: どこにも該当しないファイル ---
     if uncategorized:
@@ -365,14 +381,21 @@ def organize(target_dir: Path, dry_run: bool = False, min_group: int = 2,
             dest = resolve_conflict(dest_dir / f.name)
             if dry_run:
                 print(f"    [dry-run] {f.name}")
+                moved_count += 1
             else:
-                dest_dir.mkdir(exist_ok=True)
-                shutil.move(str(f), str(dest))
-                print(f"    {f.name}")
-            moved_count += 1
+                try:
+                    dest_dir.mkdir(exist_ok=True)
+                    shutil.move(str(f), str(dest))
+                    print(f"    {f.name}")
+                    moved_count += 1
+                except PermissionError:
+                    print(f"    [スキップ: 使用中] {f.name}")
+                    skipped_count += 1
 
     label = "移動予定" if dry_run else "移動完了"
     print(f"\n{label}: {moved_count} ファイル")
+    if skipped_count > 0:
+        print(f"スキップ（使用中）: {skipped_count} ファイル")
 
 
 def main() -> None:
