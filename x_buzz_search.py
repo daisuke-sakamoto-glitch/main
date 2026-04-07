@@ -21,6 +21,7 @@ from datetime import datetime, timedelta, timezone
 from urllib.request import Request, urlopen
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
+from pathlib import Path
 
 # ---------------------------------------------------------------------------
 # 検索カテゴリ定義
@@ -274,18 +275,31 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    # Bearer Token取得
-    bearer_token = os.environ.get("X_BEARER_TOKEN")
+    # Bearer Token取得（token.txt > 環境変数 の優先順）
+    bearer_token = None
+
+    # 1. スクリプトと同じフォルダの token.txt から読み込み
+    token_file = Path(__file__).parent / "token.txt"
+    if token_file.exists():
+        bearer_token = token_file.read_text(encoding="utf-8").strip()
+        if bearer_token:
+            print(f"トークンを {token_file} から読み込みました。")
+
+    # 2. 環境変数から取得
     if not bearer_token:
-        print("エラー: 環境変数 X_BEARER_TOKEN が設定されていません。")
+        bearer_token = os.environ.get("X_BEARER_TOKEN")
+
+    if not bearer_token:
+        print("エラー: Bearer Tokenが見つかりません。")
         print()
-        print("設定方法:")
-        print("  export X_BEARER_TOKEN=\"your_bearer_token_here\"")
+        print("設定方法（どちらか1つ）:")
         print()
-        print("Bearer Tokenの取得方法:")
-        print("  1. https://developer.x.com/ にアクセス")
-        print("  2. Developer Portalでアプリを作成")
-        print("  3. 「Keys and tokens」からBearer Tokenをコピー")
+        print("  方法1: token.txt ファイルにトークンを書く（おすすめ）")
+        print(f"    → {token_file} にトークンを貼り付けて保存")
+        print()
+        print("  方法2: 環境変数に設定")
+        print("    Windows: set X_BEARER_TOKEN=your_token")
+        print("    Mac/Linux: export X_BEARER_TOKEN=\"your_token\"")
         sys.exit(1)
 
     # 検索カテゴリ決定
