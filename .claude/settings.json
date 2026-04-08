@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo '☀️ おはようございます！Slackのタスクを確認するには /slack-tasks と入力してください。自動抽出は /slack-tasks --extract-tasks で実行できます。'"
+          }
+        ]
+      }
+    ]
+  }
+}

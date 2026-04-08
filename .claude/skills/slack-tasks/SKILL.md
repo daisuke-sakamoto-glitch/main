@@ -30,6 +30,8 @@ python slack_task_extractor.py --days 1 --include-threads
 - `--mentions-only`: 自分宛メンションのみ
 - `--dm`: DMも含める
 - `--include-threads`: スレッド返信も取得
+- `--extract-tasks`: スクリプト内蔵のキーワード検出でタスクを自動抽出
+- `--post-to <channel>`: 結果をSlackチャンネルに投稿
 - `--output json`: JSON形式で出力
 
 ### 2. タスクの抽出
