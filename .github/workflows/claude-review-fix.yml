@@ -1,0 +1,48 @@
+name: Claude Review Fix
+
+# PRにレビューコメントが来たら自動で対応
+on:
+  pull_request_review_comment:
+    types: [created]
+  issue_comment:
+    types: [created]
+
+jobs:
+  review-fix:
+    # PR上のコメントで "@claude" が含まれる場合のみ実行
+    if: |
+      (github.event_name == 'pull_request_review_comment' && contains(github.event.comment.body, '@claude')) ||
+      (github.event_name == 'issue_comment' && github.event.issue.pull_request && contains(github.event.comment.body, '@claude'))
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.head_ref }}
+
+      - name: Run Claude Code
+        uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          direct_prompt: |
+            以下のレビューコメントに対応してください。
+
+            コメント内容:
+            ${{ github.event.comment.body }}
+
+            手順:
+            1. レビューコメントの指摘を理解する
+            2. 該当箇所を修正する
+            3. 変更をコミットする
+
+            注意:
+            - 日本語でコミットメッセージを書いてください
+            - 指摘された箇所のみ修正してください
+          allowed_tools: "Bash,Read,Write,Edit,Glob,Grep"
+          timeout_minutes: 15
