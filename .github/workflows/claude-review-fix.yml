@@ -31,19 +31,3 @@ jobs:
         uses: anthropics/claude-code-action@v1
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
-          direct_prompt: |
-            以下のレビューコメントに対応してください。
-
-            コメント内容:
-            ${{ github.event.comment.body }}
-
-            手順:
-            1. レビューコメントの指摘を理解する
-            2. 該当箇所を修正する
-            3. 変更をコミットする
-
-            注意:
-            - 日本語でコミットメッセージを書いてください
-            - 指摘された箇所のみ修正してください
-          allowed_tools: "Bash,Read,Write,Edit,Glob,Grep"
-          timeout_minutes: 15
